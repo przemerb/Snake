@@ -12,352 +12,251 @@ import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
-
 import javax.swing.*;
 
-public class SnakeGame extends JPanel implements ActionListener, KeyListener{
-    private class Tile {
-        int x;
-        int y;
+public class SnakeGame extends JPanel implements ActionListener, KeyListener {
 
-        Tile(int x, int y){
-            this.x = x;
-            this.y = y;
-        }
-    }
-    
-    class Node {
-    	Tile tile;
-    	Node parent;
-    	int gCost, hCost, fCost;
-    	
-    	Node(Tile tile, Node parent, int gCost, int hCost){
-    		this.tile = tile;
-    		this.parent = parent;
-    		this.gCost = gCost;
-    		this.hCost = hCost;
-    		this.fCost = gCost + hCost;
-    	}
-    }
-    
     int boardWidth;
     int boardHeight;
-    int tileSize = 25;
+    int tileSize = 20;
 
-    //Snake
-    Tile snakeHead;
-    ArrayList<Tile> snakeBody;
-    
-    //AI1 Snake
-    Tile aiSnakeHead;
-    ArrayList<Tile> aiSnakeBody;
-    
-    //AI2 Snake
-    Tile ai2SnakeHead;
-    ArrayList<Tile> ai2SnakeBody;
-    
-    //Obstacles
+    ArrayList<Snake> snakes;
+    ArrayList<Thread> snakeThreads;
+
+    // Obstacles
     ArrayList<ArrayList<Tile>> obstacles;
 
-    //Food
-    Tile food;
+    // Apple
+    Tile apple;
     Random random;
-    
-    //Frog
-    //Tile frog;
-    //Thread frogThread;
 
-    //game logic
+    // Frog
+    Tile frog;
+    Thread frogThread;
+    boolean eatenFrog = false;
+
+    // game logic
     Timer gameLoop;
-    int snakeVelocityX;
-    int snakeVelocityY;
-    int aiSnakeVelocityX;
-    int aiSnakeVelocityY;
-    int ai2SnakeVelocityX;
-    int ai2SnakeVelocityY;
-    boolean gameOver = false;
-    boolean aiGameOver = false;
-    boolean ai2GameOver = false;
-    
+
     File scoreFile = new File("scores.txt");
 
-    SnakeGame(int boardWidth, int boardHeight){
+    SnakeGame(int boardWidth, int boardHeight) {
         this.boardWidth = boardWidth;
         this.boardHeight = boardHeight;
         setPreferredSize(new Dimension(this.boardWidth, this.boardHeight));
         setBackground(Color.black);
         addKeyListener(this);
         setFocusable(true);
-
-        snakeHead = new Tile(5, 5);
-        snakeBody = new ArrayList<Tile>();
-        
-        aiSnakeHead = new Tile(10, 10);
-        aiSnakeBody = new ArrayList<Tile>();
-        
-//        ai2SnakeHead = new Tile(40, 40);
-//        ai2SnakeBody = new ArrayList<Tile>();
-        
         random = new Random();
-        
-        //obstacles = new Tile[3][3];
-        obstacles = new ArrayList<ArrayList<Tile>>();
-        placeObstacles();
 
-        food = new Tile(15,15);
-        placeFood();
-        
-        //frog = new Tile(15, 15);
-        //FrogThread();
-        
-        snakeVelocityX = 0;
-        snakeVelocityY = 1;
-        aiSnakeVelocityX = 0;
-        aiSnakeVelocityY = -1;
-//        ai2SnakeVelocityX = 1;
-//        ai2SnakeVelocityY = 0;
-
-        gameLoop = new Timer(200, this);
-        gameLoop.start();
-        
-        Thread aiSnakeThread = new Thread(new Runnable() {
-        	public void run() {
-        		while(!aiGameOver) {
-        			aiSnakeMove();
-        			try {
-        				Thread.sleep(200);
-        			} catch (InterruptedException e) {
-        				e.printStackTrace();
-        			}
-        			repaint();
-        		}
-        	}
-        });
-        
-//        Thread ai2SnakeThread = new Thread(new Runnable() {
-//        	public void run() {
-//        		while(!ai2GameOver) {
-//        			aiSnakeMove();
-//        			try {
-//        				Thread.sleep(200);
-//        			} catch (InterruptedException e) {
-//        				e.printStackTrace();
-//        			}
-//        			repaint();
-//        		}
-//        	}
-//        });
-        
-        
-        aiSnakeThread.start();
-        //ai2SnakeThread.start();
+        newGame();
     }
 
-    public void paintComponent(Graphics g){
+    private void SnakeThread(Snake snake) {
+        Thread snakeThread = new Thread(new Runnable() {
+            public void run() {
+                while (!snake.isDead) {
+                    if (snake.name != "player") {
+                        MakeNextMove(snake);
+                    }
+                    move(snake);
+                    try {
+                        Thread.sleep(200);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                    repaint();
+                }
+            }
+        });
+        snakeThreads.add(snakeThread);
+        snakeThread.start();
+    }
+
+    public void paintComponent(Graphics g) {
         super.paintComponent(g);
         draw(g);
     }
 
-    public void draw(Graphics g){
-        //Grid
-        for(int i=0;i<boardWidth/tileSize; i++){
-            g.drawLine(i*tileSize, 0, i*tileSize, boardHeight);
-            g.drawLine(0, i*tileSize, boardWidth, i*tileSize);
+    public void draw(Graphics g) {
+        // Grid
+        for (int i = 0; i < boardWidth / tileSize; i++) {
+            g.drawLine(i * tileSize, 0, i * tileSize, boardHeight);
+            g.drawLine(0, i * tileSize, boardWidth, i * tileSize);
         }
-        //Food
+        // Food
         g.setColor(Color.red);
-        g.fill3DRect(food.x * tileSize, food.y * tileSize, tileSize, tileSize, true);
-        
-        //Obstacle
+        g.fill3DRect(apple.x * tileSize, apple.y * tileSize, tileSize, tileSize, true);
+
+        // Obstacle
         g.setColor(Color.gray);
         for (ArrayList<Tile> obstacle : obstacles) {
-        	for (Tile tile : obstacle) {
-        		g.fill3DRect(tile.x * tileSize, tile.y * tileSize, tileSize, tileSize, true);
-        	}
-        }
-        
-        //Snake Head
-        g.setColor(Color.blue);
-        g.fill3DRect(snakeHead.x * tileSize, snakeHead.y * tileSize, tileSize, tileSize, true);
-        
-
-        g.setColor(Color.green);
-        //Snake body
-        for (int i=0; i< snakeBody.size(); i++){
-            Tile snakePart = snakeBody.get(i);
-            g.fill3DRect(snakePart.x * tileSize, snakePart.y * tileSize, tileSize, tileSize, true);
-        }
-        
-        //AI1 Snake Head
-        g.setColor(Color.green);
-        g.fill3DRect(aiSnakeHead.x * tileSize, aiSnakeHead.y * tileSize, tileSize, tileSize, true);
-        
-        
-        //AI1 Snake Body
-        for (int i=0; i< aiSnakeBody.size(); i++) {
-        	Tile snakePart = aiSnakeBody.get(i);
-        	g.fill3DRect(snakePart.x * tileSize, snakePart.y * tileSize, tileSize, tileSize, true);
-        }
-        
-//        //AI2 Snake Head
-//        g.setColor(Color.green);
-//        g.fill3DRect(ai2SnakeHead.x * tileSize, ai2SnakeHead.y * tileSize, tileSize, tileSize, true);
-//        
-//        
-//        //AI2 Snake Body
-//        for (int i=0; i< ai2SnakeBody.size(); i++) {
-//        	Tile snakePart = ai2SnakeBody.get(i);
-//        	g.fill3DRect(snakePart.x * tileSize, snakePart.y * tileSize, tileSize, tileSize, true);
-//        }
-        
-        
-        //Frog
-        //g.setColor(Color.blue);
-        //g.fill3DRect(frog.x * tileSize, frog.y * tileSize, tileSize, tileSize, true);
-
-        //Score
-        g.setFont(new Font("Arial", Font.PLAIN, 16));
-        if(gameOver && aiGameOver){
-            //g.setColor(Color.red);
-            //g.drawString("Game over: "+ String.valueOf(snakeBody.size()), tileSize -16, tileSize);
-        	showGameOverDialog();
-        }
-        else{
-            g.drawString("Score: " + String.valueOf(snakeBody.size()), tileSize - 16, tileSize);
-            g.drawString("ScoreAI: " + String.valueOf(aiSnakeBody.size()), tileSize - 16, tileSize);
-        }
-    }
-
-    public void placeFood(){
-    	boolean colides;
-    	do {
-    		food.x = random.nextInt(boardWidth/tileSize);
-            food.y = random.nextInt(boardHeight/tileSize);
-            colides = false;
-            for(ArrayList<Tile> obstacle : obstacles) {
-            	for(Tile tile : obstacle) {
-            		if(collision(food, tile)) {
-            			colides = true;
-            			break;
-            		}
-            	}
+            for (Tile tile : obstacle) {
+                g.fill3DRect(tile.x * tileSize, tile.y * tileSize, tileSize, tileSize, true);
             }
-    	} while(colides);
-//        food.x = random.nextInt(boardWidth/tileSize);
-//        food.y = random.nextInt(boardHeight/tileSize);
-    }
-    
-    public void placeObstacles() {
-    	for (int i = 0; i < 3; ++i) {
-    	    ArrayList<Tile> row = new ArrayList<>();
-    	    obstacles.add(row);
-    		int x = random.nextInt((boardWidth / tileSize) -6);
-    		int y = random.nextInt((boardHeight / tileSize) -6);
-    		int direction = random.nextInt(6);
-    		for (int j = 0; j < 3; ++j) {
-    	        switch (direction) {
-    	            case 0:
-    	                row.add(new Tile(x + j, y));
-    	                break;
-    	            case 1:
-    	                row.add(new Tile(x - j, y));
-    	                break;
-    	            case 2:
-    	                row.add(new Tile(x, y + j));
-    	                break;
-    	            case 3:
-    	                row.add(new Tile(x, y - j));
-    	                break;
-    	            case 4:
-    	                row.add(new Tile(x + j, y + j));
-    	                break;
-    	            case 5:
-    	                row.add(new Tile(x - j, y - j));
-    	                break;
-    	        }
-    			
-    		}
-    	}
+        }
+
+        // Frog
+        g.setColor(Color.green);
+        g.fill3DRect(frog.x * tileSize, frog.y * tileSize, tileSize, tileSize, true);
+
+        for (Snake snake : snakes) {
+            // Snake Head
+            g.setColor(snake.color);
+            g.fill3DRect(snake.head.x * tileSize, snake.head.y * tileSize, tileSize, tileSize, true);
+
+            g.setColor(snake.color);
+            // Snake body
+            for (int i = 0; i < snake.body.size(); i++) {
+                Tile snakePart = snake.body.get(i);
+                g.fill3DRect(snakePart.x * tileSize, snakePart.y * tileSize, tileSize, tileSize, true);
+            }
+        }
+
+        // Score
+        g.setFont(new Font("Arial", Font.PLAIN, 16));
+        if (snakes.get(0).isDead) {
+
+        } else {
+            int i = 1;
+            for (Snake snake : snakes) {
+                g.setColor(snake.color);
+                g.drawString("Score: " + String.valueOf(snake.body.size()), tileSize - 16, tileSize * i);
+                i++;
+            }
+        }
     }
 
-    public boolean collision(Tile tile1, Tile tile2){
+    public Tile new_place() {
+        Tile newPlace;
+        boolean colides;
+        do {
+            int x = random.nextInt(boardWidth / tileSize);
+            int y = random.nextInt(boardHeight / tileSize);
+            newPlace = new Tile(x, y);
+            colides = false;
+            for (ArrayList<Tile> obstacle : obstacles) {
+                for (Tile tile : obstacle) {
+                    if (collision(newPlace, tile)) {
+                        colides = true;
+                        break;
+                    }
+                }
+            }
+        } while (colides);
+        return newPlace;
+    }
+
+    public void placeObstacles() {
+        for (int i = 0; i < 3; ++i) {
+            ArrayList<Tile> row = new ArrayList<>();
+            obstacles.add(row);
+            int x = random.nextInt((boardWidth / tileSize) - 6);
+            int y = random.nextInt((boardHeight / tileSize) - 6);
+            int direction = random.nextInt(6);
+            for (int j = 0; j < 3; ++j) {
+                switch (direction) {
+                    case 0:
+                        row.add(new Tile(x + j, y));
+                        break;
+                    case 1:
+                        row.add(new Tile(x - j, y));
+                        break;
+                    case 2:
+                        row.add(new Tile(x, y + j));
+                        break;
+                    case 3:
+                        row.add(new Tile(x, y - j));
+                        break;
+                    case 4:
+                        row.add(new Tile(x + j, y + j));
+                        break;
+                    case 5:
+                        row.add(new Tile(x - j, y - j));
+                        break;
+                }
+
+            }
+        }
+    }
+
+    public boolean collision(Tile tile1, Tile tile2) {
         return tile1.x == tile2.x && tile1.y == tile2.y;
     }
 
-    public void move(){
-        //eat food
-        if (collision(snakeHead, food)){
-            snakeBody.add(new Tile(food.x, food.y));
-            placeFood();
+    public void move(Snake snake) {
+        // eat apple
+        if (collision(snake.head, apple)) {
+            snake.body.add(new Tile(apple.x, apple.y));
+            apple = new_place();
         }
 
-        //Snake Body
-        for (int i = snakeBody.size()-1; i >= 0; i--){
-            Tile snakePart = snakeBody.get(i);
-            if (i==0){
-                snakePart.x = snakeHead.x;
-                snakePart.y = snakeHead.y;
+        // eat frog
+        if (collision(snake.head, frog)) {
+            for (int i = 0; i < 3; i++) {
+                snake.body.add(new Tile(frog.x, frog.y));
             }
-            else{
-                Tile prevSnakePart = snakeBody.get(i-1);
+            frog = new_place();
+            eatenFrog = true;
+        }
+
+        // Snake Body
+        for (int i = snake.body.size() - 1; i >= 0; i--) {
+            Tile snakePart = snake.body.get(i);
+            if (i == 0) {
+                snakePart.x = snake.head.x;
+                snakePart.y = snake.head.y;
+            } else {
+                Tile prevSnakePart = snake.body.get(i - 1);
                 snakePart.x = prevSnakePart.x;
                 snakePart.y = prevSnakePart.y;
             }
         }
 
-        //Snake Head
-        snakeHead.x += snakeVelocityX;
-        snakeHead.y += snakeVelocityY;
+        // Snake Head
+        snake.head.x += snake.velocityX;
+        snake.head.y += snake.velocityY;
 
-        //game over conditions
-        for (int i=0; i < snakeBody.size(); i++){
-            Tile snakePart = snakeBody.get(i);
-            //collide with the snake head
-            if (collision(snakeHead, snakePart)){
-                gameOver = true;
+        // game over conditions
+        for (int i = 0; i < snake.body.size(); i++) {
+            Tile snakePart = snake.body.get(i);
+            // collide with the snake head
+            if (collision(snake.head, snakePart)) {
+                snake.isDead = true;
             }
         }
-        
-        for (int i=0; i < aiSnakeBody.size(); i++){
-            Tile aiSnakePart = aiSnakeBody.get(i);
-            //collide with the snake head
-            if (collision(snakeHead, aiSnakePart)){
-                gameOver = true;
-            }
-        }
-        
-//        for (int i=0; i < ai2SnakeBody.size(); i++){
-//            Tile ai2SnakePart = ai2SnakeBody.get(i);
-//            //collide with the snake head
-//            if (collision(snakeHead, ai2SnakePart)){
-//                gameOver = true;
-//            }
-//        }
 
-        if (snakeHead.x*tileSize < 0 || snakeHead.x*tileSize > boardWidth ||
-            snakeHead.y*tileSize < 0 || snakeHead.y*tileSize > boardHeight){
-                gameOver = true;
-            }
-        
-
-        for (ArrayList<Tile> obstacle : obstacles) {
-            for (Tile tile : obstacle) {
-                if (collision(snakeHead, tile)) {
-                    gameOver = true;
+        // Check collision with other snakes
+        for (Snake otherSnake : snakes) {
+            if (otherSnake != snake) {
+                // Check collision with the head of other snakes
+                if (collision(snake.head, otherSnake.head)) {
+                    snake.isDead = true;
+                    otherSnake.isDead = true;
+                }
+                // Check collision with the body of other snakes
+                for (Tile otherSnakePart : otherSnake.body) {
+                    if (collision(snake.head, otherSnakePart)) {
+                        snake.isDead = true;
+                    }
                 }
             }
         }
-        
-        if(gameOver == true) {
-    	    ArrayList<Tile> row = new ArrayList<>();
-    	    obstacles.add(row);
-    	    row.add(snakeHead);
-            for (int i=0; i < snakeBody.size(); i++){
-            	row.add(snakeBody.get(i));
+
+        if (snake.head.x * tileSize < 0 || snake.head.x * tileSize > boardWidth ||
+                snake.head.y * tileSize < 0 || snake.head.y * tileSize > boardHeight) {
+            snake.isDead = true;
+        }
+
+        for (ArrayList<Tile> obstacle : obstacles) {
+            for (Tile tile : obstacle) {
+                if (collision(snake.head, tile)) {
+                    snake.isDead = true;
+                }
             }
         }
     }
-    
+
     private void showGameOverDialog() {
         JDialog gameOverDialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(this), "Game Over", true);
         gameOverDialog.setLayout(new GridBagLayout());
@@ -366,23 +265,24 @@ public class SnakeGame extends JPanel implements ActionListener, KeyListener{
         GridBagConstraints d = new GridBagConstraints();
         d.insets = new Insets(10, 10, 10, 10);
 
-        JLabel scoreLabel = new JLabel("Game Over! Your score: " + snakeBody.size());
-        JLabel scoreLabelAI = new JLabel("AI1 score: " + aiSnakeBody.size());
-        //JLabel scoreLabelAI2 = new JLabel("AI2 score: " + ai2SnakeBody.size());
+        JLabel scoreLabel = new JLabel("Game Over! Your score: " + snakes.get(0).body.size());
         c.gridx = 0;
         c.gridy = 0;
         c.gridwidth = 2;
         gameOverDialog.add(scoreLabel, c);
-        d.gridx = 0;
-        d.gridy = 30;
-        d.gridwidth = 2;
-        gameOverDialog.add(scoreLabelAI, d);
+        for (int i = 1; i < snakes.size(); ++i) {
+            JLabel scoreLabelAI = new JLabel("AI1 score: " + snakes.get(i).body.size());
+            d.gridx = 0;
+            d.gridy = 30 * i;
+            d.gridwidth = 2;
+            gameOverDialog.add(scoreLabelAI, d);
+        }
 
         JButton playAgainButton = new JButton("Play Again");
         playAgainButton.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                restartGame();
+                newGame();
                 gameOverDialog.dispose();
             }
         });
@@ -401,7 +301,7 @@ public class SnakeGame extends JPanel implements ActionListener, KeyListener{
         c.gridx = 1;
         c.gridy = 1;
         gameOverDialog.add(closeButton, c);
-        
+
         JTextArea highScoresText = new JTextArea(10, 20);
         highScoresText.setEditable(false);
         highScoresText.setText(getHighScores());
@@ -414,26 +314,37 @@ public class SnakeGame extends JPanel implements ActionListener, KeyListener{
         gameOverDialog.setLocationRelativeTo(this);
         gameOverDialog.setVisible(true);
     }
-    
-    private void restartGame() {
-        snakeHead = new Tile(5, 5);
-        snakeBody.clear();
+
+    private void newGame() {
+        obstacles = new ArrayList<ArrayList<Tile>>();
         placeObstacles();
-        placeFood();
-        //frog = new Tile(15, 15);
-        //FrogThread();
-        snakeVelocityX = 0;
-        snakeVelocityY = 1;
-        aiSnakeVelocityX = 0;
-        aiSnakeVelocityY = -1;
-        //ai2SnakeVelocityX = 1;
-        //aiSnakeVelocityY = 0;
-        gameOver = false;
-        aiGameOver = false;
+
+        snakes = new ArrayList<Snake>();
+        Snake player = new Snake(new_place(), 0, 1, Color.blue, "player");
+        snakes.add(player);
+        Snake bot = new Snake(new_place(), 1, 0, Color.orange, "bot");
+        snakes.add(bot);
+        Snake bot2 = new Snake(new_place(), 0, -1, Color.yellow, "bot2");
+        snakes.add(bot2);
+
+        apple = new_place();
+
+        frog = new_place();
+        FrogThread();
+        
+        snakeThreads = new ArrayList<Thread>();
+        for (Snake snake : snakes) {
+            SnakeThread(snake);
+        }
+
+        // Restart the game loop
+        gameLoop = new Timer(200, this);
         gameLoop.start();
+
+        // Refresh the game display
         repaint();
     }
-    
+
     private void saveScore(int score) {
         try (PrintWriter writer = new PrintWriter(new FileWriter(scoreFile, true))) {
             String date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
@@ -442,7 +353,7 @@ public class SnakeGame extends JPanel implements ActionListener, KeyListener{
             e.printStackTrace();
         }
     }
-    
+
     private String getHighScores() {
         List<String> scores = new ArrayList<>();
         try (BufferedReader reader = new BufferedReader(new FileReader(scoreFile))) {
@@ -464,261 +375,197 @@ public class SnakeGame extends JPanel implements ActionListener, KeyListener{
         }
         return topScores.toString();
     }
-    
-//    private void FrogThread() {
-//    	frogThread = new Thread(() -> {
-//    		while(!gameOver) {
-//    			moveFrog();
-//    			try {
-//					Thread.sleep(200);
-//				} catch (InterruptedException e) {
-//					// TODO Auto-generated catch block
-//					e.printStackTrace();
-//				}
-//    			repaint();
-//    		}
-//    	});
-//    	frogThread.start();
-//    }
-//    
-//    private void moveFrog() {
-//        int[] directions = {-1, 0, 1};
-//        List<Tile> possibleMoves = new ArrayList<>();
-//        int maxDistance = Integer.MIN_VALUE;
-//        Tile bestMove = frog;
-//
-//        for (int dx : directions) {
-//            for (int dy : directions) {
-//                if (dx != 0 || dy != 0) {
-//                    Tile newTile = new Tile(frog.x + dx, frog.y + dy);
-//                    if (isSafeMove(newTile)) {
-//                        int distance = calculateDistance(newTile, snakeHead);
-//                        if (distance > maxDistance) {
-//                            maxDistance = distance;
-//                            bestMove = newTile;
-//                        }
-//                    }
-//                }
-//            }
-//        }
-//
-//        frog = bestMove;
-//    }
-//
-//    private boolean isSafeMove(Tile tile) {
-//        if (tile.x < 0 || tile.x >= boardWidth / tileSize || tile.y < 0 || tile.y >= boardHeight / tileSize) {
-//            return false;
-//        }
-//        if (collision(tile, snakeHead)) {
-//            return false;
-//        }
-//        for (Tile snakePart : snakeBody) {
-//            if (collision(tile, snakePart)) {
-//                return false;
-//            }
-//        }
-//        for (Tile[] obstacle : obstacles) {
-//            for (Tile ob : obstacle) {
-//                if (collision(tile, ob)) {
-//                    return false;
-//                }
-//            }
-//        }
-//        return true;
-//    }
-//
-//    private int calculateDistance(Tile tile1, Tile tile2) {
-//        return Math.abs(tile1.x - tile2.x) + Math.abs(tile1.y - tile2.y);
-//    }
-    
-// AI Snake methods
+
+    private void FrogThread() {
+        frogThread = new Thread(() -> {
+            while (!snakes.get(0).isDead && !eatenFrog) {
+                moveFrog();
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+                repaint();
+            }
+            if (eatenFrog) {
+                eatenFrog = false;
+                FrogThread();
+            }
+        });
+        frogThread.start();
+    }
+
+    private void moveFrog() {
+        int[] directions = { -1, 0, 1 };
+        int maxDistance = Integer.MIN_VALUE;
+        Tile bestMove = frog;
+        if (calculateDistance(bestMove, snakes.get(0).head) > 5) {
+            while (true) {
+                int dx = directions[random.nextInt(3)];
+                int dy = directions[random.nextInt(3)];
+                if (dx != 0 || dy != 0) {
+                    Tile newTile = new Tile(frog.x + dx, frog.y + dy);
+                    if (isMoveSafe(newTile)) {
+                        bestMove = newTile;
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (int dx : directions) {
+                for (int dy : directions) {
+                    if (dx != 0 || dy != 0) {
+                        Tile newTile = new Tile(frog.x + dx, frog.y + dy);
+                        if (isMoveSafe(newTile)) {
+                            int distance = 0;
+                            for (Snake snake : snakes) {
+                                distance += calculateDistance(newTile, snake.head);
+                            }
+                            if (distance > maxDistance) {
+                                maxDistance = distance;
+                                bestMove = newTile;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        frog = bestMove;
+    }
+
+    private int calculateDistance(Tile tile1, Tile tile2) {
+        return Math.abs(tile1.x - tile2.x) + Math.abs(tile1.y - tile2.y);
+    }
+
+    // AI Snake methods
     private boolean isMoveSafe(Tile tile) {
-    	if (tile.x < 0 || tile.x >= boardWidth /tileSize || tile.y < 0 || tile.y >= boardHeight /tileSize) {
-    		return false;
-    	}
-    	for (Tile snakePart : aiSnakeBody) {
-    		if (collision(tile, snakePart)) {
-    			return false;
-    		}
-    	}
-    	for (ArrayList<Tile> obstacle : obstacles) {
-    		for (Tile ob : obstacle) {
-    			if(collision(tile, ob)) {
-    				return false;
-    			}
-    		}
-    	}
-    	return true;
+        if (tile.x < 0 || tile.x >= boardWidth / tileSize || tile.y < 0 || tile.y >= boardHeight / tileSize) {
+            return false;
+        }
+        for (Snake otherSnake : snakes) {
+            if (collision(tile, otherSnake.head)) {
+                return false;
+            }
+            for (Tile snakePart : otherSnake.body) {
+                if (collision(tile, snakePart)) {
+                    return false;
+                }
+            }
+        }
+        for (ArrayList<Tile> obstacle : obstacles) {
+            for (Tile ob : obstacle) {
+                if (collision(tile, ob)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
-    
+
     private int heur(Tile a, Tile b) {
-    	return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
     }
-    
-    private List<Tile> getPossibleMoves (Tile tile){
-    	List<Tile> PosibleMoves = new ArrayList<>();
-    	if(aiSnakeVelocityX == 1 && aiSnakeVelocityY == 0) {
-    		PosibleMoves.add(new Tile(tile.x + 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x, tile.y + 1));
-    		PosibleMoves.add(new Tile(tile.x, tile.y - 1));
-    	}
-    	if(aiSnakeVelocityY == 1 && aiSnakeVelocityX == 0) {
-    		PosibleMoves.add(new Tile(tile.x + 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x - 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x, tile.y + 1));
-    	}
-    	if(aiSnakeVelocityX == -1 && aiSnakeVelocityY == 0) {
-    		PosibleMoves.add(new Tile(tile.x - 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x, tile.y + 1));
-    		PosibleMoves.add(new Tile(tile.x, tile.y - 1));
-    	}
-    	if(aiSnakeVelocityY == -1 && aiSnakeVelocityX == 0) {
-    		PosibleMoves.add(new Tile(tile.x + 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x - 1, tile.y));
-    		PosibleMoves.add(new Tile(tile.x, tile.y - 1));
-    	}
-    	return PosibleMoves;
+
+    private List<Tile> getPossibleMoves(Snake snake) {
+        List<Tile> PosibleMoves = new ArrayList<>();
+        if (snake.velocityX == 1 && snake.velocityY == 0) {
+            PosibleMoves.add(new Tile(snake.head.x + 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y + 1));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y - 1));
+        }
+        if (snake.velocityY == 1 && snake.velocityX == 0) {
+            PosibleMoves.add(new Tile(snake.head.x + 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x - 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y + 1));
+        }
+        if (snake.velocityX == -1 && snake.velocityY == 0) {
+            PosibleMoves.add(new Tile(snake.head.x - 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y + 1));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y - 1));
+        }
+        if (snake.velocityY == -1 && snake.velocityX == 0) {
+            PosibleMoves.add(new Tile(snake.head.x + 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x - 1, snake.head.y));
+            PosibleMoves.add(new Tile(snake.head.x, snake.head.y - 1));
+        }
+        return PosibleMoves;
     }
-    
-    private void MakeNextMove() {
-    	List<Tile> possibleMoves = getPossibleMoves(aiSnakeHead);
-    	Tile bestMove = null;
-    	int minDistance = Integer.MAX_VALUE;
-    	
-    	for (Tile move : possibleMoves) {
-    		if (isMoveSafe(move)) {
-    			int distance = heur(move, food);
-    			if (distance < minDistance) {
-    				minDistance = distance;
-    				bestMove = move;
-    			}
-    		}
-    	}
-    	if (bestMove == null) {
-    		
-    	}
-    	else if (bestMove.x - aiSnakeHead.x == 1) {
-    		aiSnakeVelocityX = 1;
-    		aiSnakeVelocityY = 0;
-    	}
-    	else if(bestMove.x - aiSnakeHead.x == -1) {
-    		aiSnakeVelocityX = -1;
-    		aiSnakeVelocityY = 0;
-    	}
-    	else if(bestMove.y - aiSnakeHead.y == 1) {
-    		aiSnakeVelocityY = 1;
-    		aiSnakeVelocityX = 0;
-    	}
-    	else if(bestMove.y - aiSnakeHead.y == -1) {
-    		aiSnakeVelocityY = -1;
-    		aiSnakeVelocityX = 0;
-    	}
-    	
-    	return;
+
+    private void MakeNextMove(Snake snake) {
+        List<Tile> possibleMoves = getPossibleMoves(snake);
+        Tile bestMove = null;
+        int minDistance = Integer.MAX_VALUE;
+
+        for (Tile move : possibleMoves) {
+            if (isMoveSafe(move)) {
+                int distanceToApple = heur(move, apple);
+                int distanceToFrog = heur(move, frog);
+                if (distanceToApple < distanceToFrog) {
+                    if (distanceToApple < minDistance) {
+                        minDistance = distanceToApple;
+                        bestMove = move;
+                    }
+                } else {
+                    if (distanceToFrog < minDistance) {
+                        minDistance = distanceToFrog;
+                        bestMove = move;
+
+                    }
+                }
+            }
+        }
+        if (bestMove == null) {
+
+        } else if (bestMove.x - snake.head.x == 1) {
+            snake.velocityX = 1;
+            snake.velocityY = 0;
+        } else if (bestMove.x - snake.head.x == -1) {
+            snake.velocityX = -1;
+            snake.velocityY = 0;
+        } else if (bestMove.y - snake.head.y == 1) {
+            snake.velocityY = 1;
+            snake.velocityX = 0;
+        } else if (bestMove.y - snake.head.y == -1) {
+            snake.velocityY = -1;
+            snake.velocityX = 0;
+        }
     }
-    
-	public void aiSnakeMove(){
-		MakeNextMove();
-		
-	  //eat food
-	  if (collision(aiSnakeHead, food)){
-	      aiSnakeBody.add(new Tile(food.x, food.y));
-	      placeFood();
-	  }
-	
-	  //Snake Body
-	  for (int i = aiSnakeBody.size()-1; i >= 0; i--){
-	      Tile snakePart = aiSnakeBody.get(i);
-	      if (i==0){
-	          snakePart.x = aiSnakeHead.x;
-	          snakePart.y = aiSnakeHead.y;
-	      }
-	      else{
-	          Tile prevSnakePart = aiSnakeBody.get(i-1);
-	          snakePart.x = prevSnakePart.x;
-	          snakePart.y = prevSnakePart.y;
-	      }
-	  }
-	
-	  //Snake Head
-	  aiSnakeHead.x += aiSnakeVelocityX;
-	  aiSnakeHead.y += aiSnakeVelocityY;
-	
-	  //game over conditions
-	  for (int i=0; i < aiSnakeBody.size(); i++){
-	      Tile aiSnakePart = aiSnakeBody.get(i);
-	      //collide with the snake head
-	      if (collision(aiSnakeHead, aiSnakePart)){
-	          aiGameOver = true;
-	      }
-	  }
-	  
-	  for (int i=0; i < snakeBody.size(); i++){
-	      Tile snakePart = snakeBody.get(i);
-	      //collide with the snake head
-	      if (collision(aiSnakeHead, snakePart)){
-	          aiGameOver = true;
-	      }
-	  }
-	
-	  if (aiSnakeHead.x*tileSize < 0 || aiSnakeHead.x*tileSize > boardWidth ||
-	      aiSnakeHead.y*tileSize < 0 || aiSnakeHead.y*tileSize > boardHeight){
-	          aiGameOver = true;
-	      }
-	  
-	
-	  for (ArrayList<Tile> obstacle : obstacles) {
-	      for (Tile tile : obstacle) {
-	          if (collision(aiSnakeHead, tile)) {
-	              aiGameOver = true;
-	          }
-	      }
-	  }
-	  
-      if(aiGameOver == true) {
-  	    ArrayList<Tile> row = new ArrayList<>();
-  	    obstacles.add(row);
-  	    row.add(aiSnakeHead);
-          for (int i=0; i < aiSnakeBody.size(); i++){
-          	row.add(aiSnakeBody.get(i));
-          }
-      }
-	}
-    
+
     @Override
     public void actionPerformed(ActionEvent e) {
-        move();
         repaint();
-        if (gameOver){
+        if (snakes.get(0).isDead) {
             gameLoop.stop();
-            saveScore(snakeBody.size());
+            saveScore(snakes.get(0).body.size());
+            showGameOverDialog();
+            
         }
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
-       if (e.getKeyCode() == KeyEvent.VK_UP && snakeVelocityY!=1){
-        snakeVelocityX = 0;
-        snakeVelocityY = -1;
-       }
-       else if (e.getKeyCode() == KeyEvent.VK_DOWN && snakeVelocityY!=-1){
-        snakeVelocityX = 0;
-        snakeVelocityY = 1;
-       }
-       else if (e.getKeyCode() == KeyEvent.VK_LEFT && snakeVelocityX!=1){
-        snakeVelocityX = -1;
-        snakeVelocityY = 0;
-       }
-       else if (e.getKeyCode() == KeyEvent.VK_RIGHT && snakeVelocityX!=-1){
-        snakeVelocityX = 1;
-        snakeVelocityY = 0;
-       }
+        if (e.getKeyCode() == KeyEvent.VK_UP && snakes.get(0).velocityY != 1) {
+            snakes.get(0).velocityX = 0;
+            snakes.get(0).velocityY = -1;
+        } else if (e.getKeyCode() == KeyEvent.VK_DOWN && snakes.get(0).velocityY != -1) {
+            snakes.get(0).velocityX = 0;
+            snakes.get(0).velocityY = 1;
+        } else if (e.getKeyCode() == KeyEvent.VK_LEFT && snakes.get(0).velocityX != 1) {
+            snakes.get(0).velocityX = -1;
+            snakes.get(0).velocityY = 0;
+        } else if (e.getKeyCode() == KeyEvent.VK_RIGHT && snakes.get(0).velocityX != -1) {
+            snakes.get(0).velocityX = 1;
+            snakes.get(0).velocityY = 0;
+        }
     }
 
-    //do not need
+    // do not need
     @Override
-    public void keyTyped(KeyEvent e) {}
+    public void keyTyped(KeyEvent e) {
+    }
 
     @Override
-    public void keyReleased(KeyEvent e) {}
+    public void keyReleased(KeyEvent e) {
+    }
 }

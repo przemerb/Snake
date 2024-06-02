@@ -1,9 +1,17 @@
 import javax.swing.*;
+import java.awt.*;
 
 public class App {
     public static void main(String[] args) throws Exception {
-        int boardWidth = 600;
-        int boardHeight = boardWidth;
+        Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+        int screenWidth = screenSize.width;
+        int screenHeight = screenSize.height;
+
+        int boardWidth = (int) (screenWidth * 0.8);
+        int boardHeight = (int) (screenHeight * 0.8);
+
+        boardWidth = (boardWidth / 20) * 20;
+        boardHeight = (boardHeight / 20) * 20;
 
         JFrame frame = new JFrame("Snake");
         frame.setVisible(true);
